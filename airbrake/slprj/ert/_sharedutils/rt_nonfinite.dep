@@ -1,6 +1,0 @@
-rt_nonfinite.o: \
- C:/simulan/sim_airbrake/airbrake/slprj/ert/_sharedutils/rt_nonfinite.c \
- C:/simulan/sim_airbrake/airbrake/slprj/ert/_sharedutils/rtwtypes.h \
- C:/simulan/sim_airbrake/airbrake/slprj/ert/_sharedutils/rt_nonfinite.h
-C:/simulan/sim_airbrake/airbrake/slprj/ert/_sharedutils/rtwtypes.h:
-C:/simulan/sim_airbrake/airbrake/slprj/ert/_sharedutils/rt_nonfinite.h:
