@@ -1,0 +1,126 @@
+function u_out = NMPC(h,w,U,M_b,C_b,M_off,Cdr_off,pitch)
+    u_out = 0; 
+    %%tick of 100ms
+    persistent tick u_store
+
+    if isempty(tick)
+        tick = 0;    
+        u_store = 0;
+    end
+
+    if isnan(h) || isnan(w)
+       return
+    end
+
+% 1. --- CONFIGURATION ---
+if tick <= 0
+    h_target = (27500)*0.3048;
+    h_pred_min = RK2(h, w, U ,pitch, 0.0, M_b, C_b, M_off, Cdr_off);
+
+    if h_pred_min < h_target
+        u_out = 0.0; % True Zero (No search needed)
+        return;
+    end
+    h_pred_max = RK2(h, w, U, pitch, 1.0, M_b, C_b, M_off, Cdr_off);
+    if h_pred_max > h_target
+        u_out = 1.0; % True One 
+        return;
+    end
+% 2. --- BINARY SEARCH INITIALIZATION ---
+    u_low = 0.0;
+    u_high = 1.0;
+    u_mid = 0.5;
+
+    % --- STAGE 1: PREDICTION ARRAY CALCULATION ---
+    for iter = 1:5
+        h_sim = RK2(h, w, U, pitch, u_mid, M_b, C_b, M_off, Cdr_off);
+
+% --- BINARY SEARCH LOGIC ---
+        if h_sim > h_target
+            % Still overshooting -> Increase u
+            u_low = u_mid;
+        else
+            % Undershooting -> Decrease u
+            u_high = u_mid;
+        end
+        u_mid = (u_low + u_high) / 2;
+ 
+    end
+    u_out = u_mid; 
+    u_store = u_out;
+    tick = 10;
+end
+    tick = tick - 1;
+    u_out = u_store;
+end
+
+
+
+% =========================================================
+function h_final = RK2(h, w, U, pitch, u_val, M_b, C_b, M_off, Cdr_off)
+   
+
+    % Physics Constants
+    m = 25.142;Ar = 0.01824146925;Ab = 0.0063812;g = 9.81;         
+    dt = 0.1;      
+
+    h1 = h;
+    w1 = w;
+    U1 = U;
+    Vze1 = w1 * cos(pitch) - U1 * sin(pitch);
+   
+    % RK2 
+    while Vze1 >= 0
+        % --- k1: Initial Slopes ---
+        Vze1 = w1 * cos(pitch) - U1 * sin(pitch);
+        % ISA 
+        T1 = 288.15 - 0.0065 * h1;
+        P1 = 101325 * (T1 / 288.15)^5.2558;
+        rho1 = P1 / (287.0528 * T1);
+        mach1 = w1 / sqrt(1.4 * 287.0528 * T1);
+        
+        % Lookup Cd 
+        Cdb1 = interp1(M_b, C_b, mach1, 'linear', 'extrap');
+        Cdr1 = interp1(M_off, Cdr_off, mach1, 'linear', 'extrap');
+        
+        % Acceleration 1
+        drag1 = 0.5 * rho1 * w1^2 * ((Cdr1*Ar) + (Cdb1*Ab*u_val));
+        aw1 = (-drag1/m)  *cos(pitch) -g; %Drag compoent olong nose cone
+        aU1 = g * sin(pitch); %gravity component of Xb axis
+        
+        
+
+        % --- Midpoint Probe ---
+        h2 = h1 +Vze1 * (dt / 2);
+        w2 = w1 + aw1 * (dt / 2);
+        U2 = U1 + aU1 * (dt / 2);
+
+        % --- k2: Midpoint Slopes ---
+        Vze2 = w2 * cos(pitch) - U2 * sin(pitch);
+        T2 = 288.15 - 0.0065 * h2;
+        P2 = 101325 * (T2 / 288.15)^5.2558;
+        rho2 = P2 / (287.0528 * T2);
+        mach2 = w2 / sqrt(1.4 * 287.0528 * T2);
+        
+        Cdb2 = interp1(M_b, C_b, mach2, 'linear', 'extrap');
+        Cdr2 = interp1(M_off, Cdr_off, mach2, 'linear', 'extrap');
+        
+        % Calculate Acceleration 2
+        drag2 = 0.5 * rho2 * w2^2 * ((Cdr2*Ar) + (Cdb2*Ab*u_val));
+        aw2 = (-drag2/m)  *cos(pitch) -g; %Drag compoent olong nose cone
+        aU2 = g * sin(pitch); %gravity component of Xb axis
+       
+
+        % --- Final State Update ---
+        w1 = w1 + aw2 * dt ;
+        U1 = U1 + aU2 *dt ;
+        
+
+        h1 = h1 +Vze2 * dt;
+        if h1>12000
+            break
+        end
+    end
+    
+    h_final = h1;
+end
